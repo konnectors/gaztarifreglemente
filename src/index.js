@@ -1,4 +1,4 @@
-import ContentScript from '../../connectorLibs/ContentScript'
+import {ContentScript} from 'cozy-clisk/dist/contentscript'
 import {format} from 'date-fns'
 import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
@@ -334,5 +334,5 @@ connector.init({ additionalExposedMethodsNames: [
   'waitForInterception',
   'checkIfFullfilled'
 ] }).catch(err => {
-  console.warn(err)
+  log.warn(err)
 })
