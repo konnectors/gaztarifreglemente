@@ -9,7 +9,7 @@ var proxied = window.XMLHttpRequest.prototype.open
 window.XMLHttpRequest.prototype.open = function (){
   if (arguments[1].includes('digitaltr-facture/api/private/facturesarchives?')) {
     var originalResponse = this
-    originalResponse.addEventListener('readystatechange', async function (event) {
+    originalResponse.addEventListener('readystatechange', async function () {
       if (originalResponse.readyState === 4) {
         const jsonResponse = JSON.parse(originalResponse.responseText)
         XHRResponses.push(jsonResponse)
@@ -226,7 +226,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async checkIfFullfilled(){
-    function sortTruthy(value,index,array){
+    function sortTruthy(value){
       return value !== undefined
     }
     const neededInfos = [
