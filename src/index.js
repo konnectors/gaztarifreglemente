@@ -32,7 +32,7 @@ class TemplateContentScript extends ContentScript {
   // PILOT //
   // ////////
   async ensureAuthenticated() {
-    this.log('Starting ensureAuthenticated')
+    this.log('debug', 'Starting ensureAuthenticated')
     const credentials = await this.getCredentials()
     if (credentials) {
       const auth = await this.authWithCredentials(credentials)
@@ -51,7 +51,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async authWithCredentials(credentials) {
-    this.log('Starting authWithCredentials')
+    this.log('debug', 'Starting authWithCredentials')
     await this.goto(HOMEPAGE_URL)
     await this.waitForElementInWorker('#cai-webchat-div')
     await Promise.race([
@@ -67,13 +67,13 @@ class TemplateContentScript extends ContentScript {
     if (isSuccess) {
       return true
     } else {
-      this.log('Something went wrong while autoLogin, new auth needed')
+      this.log('debug', 'Something went wrong while autoLogin, new auth needed')
       this.waitForUserAuthentication()
     }
   }
 
   async authWithoutCredentials() {
-    this.log('Starting authWithoutCredentials')
+    this.log('debug', 'Starting authWithoutCredentials')
     await this.goto(LOGIN_URL)
     await this.waitForElementInWorker('#email')
     await this.waitForUserAuthentication()
@@ -81,7 +81,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async waitForUserAuthentication() {
-    this.log('waitForUserAuthentication starts')
+    this.log('debug', 'waitForUserAuthentication starts')
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
@@ -94,7 +94,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async getUserDataFromWebsite() {
-    this.log('Starting getUserDataFromWebsite')
+    this.log('debug', 'Starting getUserDataFromWebsite')
     await this.waitForElementInWorker(
       'a[href="/espace-client-tr/profil-et-contrats.html"]'
     )
@@ -132,13 +132,13 @@ class TemplateContentScript extends ContentScript {
     if (this.store.userIdentity.email) {
       return { sourceAccountIdentifier: this.store.userIdentity.email }
     } else {
-      this.log("Couldn't get a sourceAccountIdentifier, using default")
+      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
       return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
     }
   }
 
   async fetch(context) {
-    this.log('Starting fetch')
+    this.log('debug', 'Starting fetch')
     await Promise.all([
       this.saveIdentity(this.store.userIdentity),
       this.saveBills(this.store.bills, {
@@ -153,13 +153,13 @@ class TemplateContentScript extends ContentScript {
   }
 
   async tryAutoLogin(credentials) {
-    this.log('Trying autologin')
+    this.log('debug', 'Trying autologin')
     const isSuccess = await this.autoLogin(credentials)
     return isSuccess
   }
 
   async autoLogin(credentials) {
-    this.log('Starting autologin')
+    this.log('debug', 'Starting autologin')
     const selectors = {
       email: '#email',
       password: '#motdepasse',
@@ -183,7 +183,7 @@ class TemplateContentScript extends ContentScript {
   // ////////
 
   async checkAuthenticated() {
-    this.log('Starting checkAuthenticated')
+    this.log('debug', 'Starting checkAuthenticated')
     const loginField = document.querySelector('#email')
     const passwordField = document.querySelector('#motdepasse')
     if (loginField && passwordField) {
@@ -191,7 +191,7 @@ class TemplateContentScript extends ContentScript {
         loginField,
         passwordField
       )
-      this.log('Sendin userCredentials to Pilot')
+      this.log('debug', 'Sendin userCredentials to Pilot')
       this.sendToPilot({
         userCredentials
       })
@@ -200,15 +200,15 @@ class TemplateContentScript extends ContentScript {
       document.location.href.includes('espace-client-tr/synthese.html') &&
       document.querySelector('#header-deconnexion')
     ) {
-      this.log('Auth Check succeeded')
+      this.log('debug', 'Auth Check succeeded')
       return true
     }
-    this.log('Not respecting condition, returning false')
+    this.log('debug', 'Not respecting condition, returning false')
     return false
   }
 
   async findAndSendCredentials(login, password) {
-    this.log('Starting findAndSendCredentials')
+    this.log('debug', 'Starting findAndSendCredentials')
     let userLogin = login.value
     let userPassword = password.value
     const userCredentials = {
@@ -227,7 +227,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async checkIfLogged() {
-    this.log('Starting checkIfLogged')
+    this.log('debug', 'Starting checkIfLogged')
     const mailInput = document.querySelector('#email')
     const logoutButton = document.querySelector('#header-deconnexion')
     if (mailInput) {
@@ -239,7 +239,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async handleForm(loginData) {
-    this.log('Starting handleForm')
+    this.log('debug', 'Starting handleForm')
     const loginElement = document.querySelector(loginData.selectors.email)
     const passwordElement = document.querySelector(loginData.selectors.password)
     const submitButton = document.querySelector(loginData.selectors.loginButton)
@@ -330,7 +330,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async getUserDatas(datasToCompute) {
-    this.log('Starting getUserDatas')
+    this.log('debug', 'Starting getUserDatas')
     let bills = []
 
     for (let bill of datasToCompute[0].listeFactures) {
