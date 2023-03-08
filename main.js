@@ -9239,7 +9239,6 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     await this.goto(LOGIN_URL)
     await this.waitForElementInWorker('#email')
     await this.waitForUserAuthentication()
-    await this.saveCredentials(this.store.userCredentials)
   }
 
   async waitForUserAuthentication() {
@@ -9258,11 +9257,11 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
   async getUserDataFromWebsite() {
     this.log('debug', 'Starting getUserDataFromWebsite')
     await this.waitForElementInWorker(
-      'a[href="/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
     await this.runInWorker(
       'click',
-      'a[href="/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
     // Here we need to make sure every elements we will need for getUserIdentity to work
     // are present. Datas are not loaded at the very same time, resulting in html elements
@@ -9287,7 +9286,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     await this.runInWorker('getUserIdentity')
     await this.runInWorker(
       'click',
-      'a[href="/espace-client-tr/factures-et-paiements.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
     await this.runInWorker('getUserDatas', this.store.XHRResponses)
@@ -9301,6 +9300,9 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
 
   async fetch(context) {
     this.log('debug', 'Starting fetch')
+    if (this.store.userCredentials) {
+      await this.saveCredentials(this.store.userCredentials)
+    }
     await Promise.all([
       this.saveIdentity(this.store.userIdentity),
       this.saveBills(this.store.bills, {
@@ -9518,7 +9520,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
         )}-${doubleEncodedNumber}.pdf?`,
         filename: `${formattedDate}_Gaz-tarif-reglemente_${amount}${currency}.pdf`,
         documentType,
-        billDate,
+        date: billDate,
         vendor: 'Gaz Tarif Réglementé',
         vendorRef,
         fileAttributes: {
