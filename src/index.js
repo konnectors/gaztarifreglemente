@@ -96,11 +96,11 @@ class TemplateContentScript extends ContentScript {
   async getUserDataFromWebsite() {
     this.log('debug', 'Starting getUserDataFromWebsite')
     await this.waitForElementInWorker(
-      'a[href="/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
     await this.runInWorker(
       'click',
-      'a[href="/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
     // Here we need to make sure every elements we will need for getUserIdentity to work
     // are present. Datas are not loaded at the very same time, resulting in html elements
@@ -125,7 +125,7 @@ class TemplateContentScript extends ContentScript {
     await this.runInWorker('getUserIdentity')
     await this.runInWorker(
       'click',
-      'a[href="/espace-client-tr/factures-et-paiements.html"]'
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
     await this.runInWorker('getUserDatas', this.store.XHRResponses)
@@ -356,7 +356,7 @@ class TemplateContentScript extends ContentScript {
         )}-${doubleEncodedNumber}.pdf?`,
         filename: `${formattedDate}_Gaz-tarif-reglemente_${amount}${currency}.pdf`,
         documentType,
-        billDate,
+        date: billDate,
         vendor: 'Gaz Tarif Réglementé',
         vendorRef,
         fileAttributes: {
