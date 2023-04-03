@@ -17,25 +17,24 @@ class TemplateContentScript extends ContentScript {
     const isAlreadyLogged = await this.runInWorker('checkIfLoggedAtStart')
     if (isAlreadyLogged) {
       return true
+    }
+
+    const sessionIsActive = await this.checkSession()
+    if (sessionIsActive) {
+      this.log('debug', 'Found active session')
+      await this.runInWorker('click', '#lien-selectionner-reference-client')
+      await this.waitForElementInWorker(
+        'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
+      )
+      return true
+    }
+    const credentials = await this.getCredentials()
+    if (credentials) {
+      this.log('info', 'Credentials found')
+      await this.authWithCredentials(credentials)
     } else {
-      const sessionIsActive = await this.checkSession()
-      if (sessionIsActive) {
-        this.log('debug', 'Found active session')
-        await this.runInWorker('click', '#lien-selectionner-reference-client')
-        await this.waitForElementInWorker(
-          'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
-        )
-        return true
-      }
-      const credentials = await this.getCredentials()
-      if (credentials) {
-        this.log('info', 'Credentials found')
-        await this.authWithCredentials(credentials)
-      }
-      if (!credentials) {
-        this.log('info', 'No credentials found')
-        await this.authWithoutCredentials()
-      }
+      this.log('info', 'No credentials found')
+      await this.authWithoutCredentials()
     }
   }
 
@@ -67,6 +66,8 @@ class TemplateContentScript extends ContentScript {
 
   async getUserDataFromWebsite() {
     this.log('debug', 'Starting getUserDataFromWebsite')
+    await this.waitForElementInWorker('.c-headerCelUser__name')
+    await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
     await this.waitForElementInWorker(
       'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
@@ -149,6 +150,9 @@ class TemplateContentScript extends ContentScript {
       this.waitForElementInWorker('#login-btn')
     ])
     await this.runInWorker('handleForm', credentials)
+    const isLoginFailed = await this.runInWorker('checkLoginFail')
+    if (isLoginFailed) return false
+    else return true
   }
 
   // ////////
@@ -366,9 +370,19 @@ class TemplateContentScript extends ContentScript {
     if (loginElement.value.length > 0 && passwordElement.value.length > 0) {
       this.log('info', 'Login and password fullfilled')
       submitButton.click()
+      return true
     } else {
-      this.log('info', 'something went wrong while filling values')
+      this.log('warn', 'something went wrong while filling values')
+      return false
     }
+  }
+
+  async checkLoginFail() {
+    const errorElement = document
+      .querySelector('#js-login-global-error')
+      .getAttribute('data-marquage_info')
+    if (errorElement !== null) return true
+    else return false
   }
 }
 
@@ -384,7 +398,8 @@ connector
       'checkIfFullfilled',
       'checkWelcomeMessage',
       'checkActiveSession',
-      'handleForm'
+      'handleForm',
+      'checkLoginFail'
     ]
   })
   .catch(err => {
