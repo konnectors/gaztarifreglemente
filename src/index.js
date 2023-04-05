@@ -12,21 +12,23 @@ class TemplateContentScript extends ContentScript {
   // PILOT //
   // ////////
   async ensureAuthenticated() {
-    await this.goto(BASE_URL)
-    await this.waitForElementInWorker('div[class="c-siteHeaderV2__mainNav"]')
-    const isAlreadyLogged = await this.runInWorker('checkIfLoggedAtStart')
-    if (isAlreadyLogged) {
-      return true
-    }
+    await this.goto(LOGIN_URL)
+    await this.waitForElementInWorker('#login-form')
 
     const sessionIsActive = await this.checkSession()
     if (sessionIsActive) {
-      this.log('debug', 'Found active session')
-      await this.runInWorker('click', '#lien-selectionner-reference-client')
-      await this.waitForElementInWorker(
-        'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
-      )
-      return true
+      this.log('info', 'Found an active session, logging out')
+      await this.runInWorker('logout')
+      // Here we need to force the BASE_URL to reload the page after logout, ensuring a good execution.
+      await this.goto(BASE_URL)
+      await this.waitForElementInWorker('div[class="quickAccessV3 section"]')
+      await this.runInWorkerUntilTrue({
+        method: 'ensureLoggedOut',
+        timeout: 5000
+      })
+      await this.waitForElementInWorker('#idEspaceClientDivMobile')
+      await this.runInWorker('goToLoginForm')
+      await this.checkSession()
     }
     const credentials = await this.getCredentials()
     if (credentials) {
@@ -51,7 +53,6 @@ class TemplateContentScript extends ContentScript {
 
   async authWithoutCredentials() {
     this.log('debug', 'Starting authWithoutCredentials')
-    await this.goto(LOGIN_URL)
     await this.waitForElementInWorker('#login-form')
     await this.waitForElementInWorker('#email')
     await this.waitForUserAuthentication()
@@ -77,9 +78,6 @@ class TemplateContentScript extends ContentScript {
     )
     await this.waitForElementInWorker('.c-headerCelUser__name')
     await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
-    // Here we need to make sure every elements we will need for getUserIdentity to work
-    // are present. Datas are not loaded at the very same time, resulting in html elements
-    // visible but not fullfilled entirely.
     await Promise.all([
       this.waitForElementInWorker('#idEmailContact_Infos'),
       this.waitForElementInWorker(
@@ -129,10 +127,17 @@ class TemplateContentScript extends ContentScript {
   }
   async checkSession() {
     this.log('debug', 'Starting checkSession')
-    await this.runInWorker('click', '#idEspaceClientDivMobile')
-    await this.waitForElementInWorker('#login-form')
-    // Here we wait for 3 secondes as the website could be a bit long to make the form interactive
-    // It may by present but not visible yet despite CSS is not actually hidding it
+    /*
+     * Here we wait for 3 secondes as the website could be a bit long to make the form interactive.
+     * It may be present but not visible yet despite CSS is not actually hidding it,
+     * the website take some times to apply the hidden class if it needs one.
+     * It seems like there's no request sent login-form related to modify its class or anything else we could intercept to ensure the page wont change.
+     * Cookies are no help too as the token or the refresh token are still present in the case of an active
+     * session AND in case of a new auth needed. This sleep is for now the only way to ensure that nothing will change before executing
+     * the rest of the connector's code and know in wich scenario we are in at the moment as there is ALWAYS a form
+     * in the page, either scenarios (session or new auth).
+     * It has been discuss and agreed to keep it that way even if it's clearly not recommended.
+     */
     await sleep(3000)
     const isFormInvisble = await this.runInWorker('checkActiveSession')
     if (isFormInvisble) {
@@ -384,6 +389,28 @@ class TemplateContentScript extends ContentScript {
     if (errorElement !== null) return true
     else return false
   }
+
+  async logout() {
+    this.log('info', 'Logout starts')
+    const logoutButton = document.querySelector('#deconnexionBtnloginPage')
+    logoutButton.click()
+    return true
+  }
+
+  async ensureLoggedOut() {
+    this.log('info', 'ensureLoggedOut starts')
+    const actualHref = document.location.href
+    if (actualHref === 'https://gaz-tarif-reglemente.fr/') {
+      return true
+    }
+    return false
+  }
+
+  async goToLoginForm() {
+    this.log('info', 'goToLoginPage starts')
+    const loginPageButton = document.querySelector('#idEspaceClientDivMobile')
+    loginPageButton.click()
+  }
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -399,7 +426,10 @@ connector
       'checkWelcomeMessage',
       'checkActiveSession',
       'handleForm',
-      'checkLoginFail'
+      'checkLoginFail',
+      'logout',
+      'ensureLoggedOut',
+      'goToLoginForm'
     ]
   })
   .catch(err => {
