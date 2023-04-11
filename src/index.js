@@ -4,66 +4,45 @@ import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('gaztarifreglementeCCC')
 
-let XHRResponses = []
-var proxied = window.XMLHttpRequest.prototype.open
-window.XMLHttpRequest.prototype.open = function () {
-  if (
-    arguments[1].includes('digitaltr-facture/api/private/facturesarchives?')
-  ) {
-    var originalResponse = this
-    originalResponse.addEventListener('readystatechange', async function () {
-      if (originalResponse.readyState === 4) {
-        const jsonResponse = JSON.parse(originalResponse.responseText)
-        XHRResponses.push(jsonResponse)
-        // In every case, always returning the original response untouched
-        return originalResponse
-      }
-    })
-  }
-  return proxied.apply(this, [].slice.call(arguments))
-}
-
 const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'gaz tarif reglemente'
+const BASE_URL = 'https://gaz-tarif-reglemente.fr/'
 const LOGIN_URL = 'https://gaz-tarif-reglemente.fr/login-page.html'
-const HOMEPAGE_URL =
-  'https://gaz-tarif-reglemente.fr/espace-client-tr/synthese.html'
 class TemplateContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
   async ensureAuthenticated() {
-    this.log('debug', 'Starting ensureAuthenticated')
+    await this.goto(LOGIN_URL)
+    await this.waitForElementInWorker('#login-form')
+
+    const sessionIsActive = await this.checkSession()
+    if (sessionIsActive) {
+      this.log('info', 'Found an active session, logging out')
+      await this.runInWorker('logout')
+      // Here we need to force the BASE_URL to reload the page after logout, ensuring a good execution.
+      await this.goto(BASE_URL)
+      await this.waitForElementInWorker('div[class="quickAccessV3 section"]')
+      await this.runInWorkerUntilTrue({
+        method: 'ensureLoggedOut',
+        timeout: 5000
+      })
+      await this.waitForElementInWorker('#idEspaceClientDivMobile')
+      await this.runInWorker('goToLoginForm')
+      await this.checkSession()
+    }
     const credentials = await this.getCredentials()
     if (credentials) {
-      const auth = await this.authWithCredentials(credentials)
-      if (auth) {
-        return true
-      }
-      return false
-    }
-    if (!credentials) {
-      const auth = await this.authWithoutCredentials()
-      if (auth) {
-        return true
-      }
-      return false
+      this.log('info', 'Credentials found')
+      await this.authWithCredentials(credentials)
+    } else {
+      this.log('info', 'No credentials found')
+      await this.authWithoutCredentials()
     }
   }
 
   async authWithCredentials(credentials) {
     this.log('debug', 'Starting authWithCredentials')
-    await this.goto(HOMEPAGE_URL)
-    await this.waitForElementInWorker('#cai-webchat-div')
-    await Promise.race([
-      this.waitForElementInWorker('#email'),
-      this.waitForElementInWorker('#header-deconnexion')
-    ])
-    const isLogged = await this.runInWorker('checkIfLogged')
-    if (isLogged) {
-      await this.clickAndWait('#header-deconnexion', '#idEspaceClientDiv')
-      await this.clickAndWait('#idEspaceClientDiv', '#email')
-    }
-    const isSuccess = await this.tryAutoLogin(credentials)
+    const isSuccess = await this.autoLogin(credentials)
     if (isSuccess) {
       return true
     } else {
@@ -74,7 +53,7 @@ class TemplateContentScript extends ContentScript {
 
   async authWithoutCredentials() {
     this.log('debug', 'Starting authWithoutCredentials')
-    await this.goto(LOGIN_URL)
+    await this.waitForElementInWorker('#login-form')
     await this.waitForElementInWorker('#email')
     await this.waitForUserAuthentication()
   }
@@ -84,16 +63,12 @@ class TemplateContentScript extends ContentScript {
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
-    // Here wee need to save what we have in the interception
-    // as it is emptyed before we actually use it
-    await this.runInWorkerUntilTrue({
-      method: 'waitForInterception',
-      timeout: 30000
-    })
   }
 
   async getUserDataFromWebsite() {
     this.log('debug', 'Starting getUserDataFromWebsite')
+    await this.waitForElementInWorker('.c-headerCelUser__name')
+    await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
     await this.waitForElementInWorker(
       'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
@@ -101,9 +76,8 @@ class TemplateContentScript extends ContentScript {
       'click',
       'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
     )
-    // Here we need to make sure every elements we will need for getUserIdentity to work
-    // are present. Datas are not loaded at the very same time, resulting in html elements
-    // visible but not fullfilled entirely.
+    await this.waitForElementInWorker('.c-headerCelUser__name')
+    await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
     await Promise.all([
       this.waitForElementInWorker('#idEmailContact_Infos'),
       this.waitForElementInWorker(
@@ -127,12 +101,11 @@ class TemplateContentScript extends ContentScript {
       'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
-    await this.runInWorker('getUserDatas', this.store.XHRResponses)
-    if (this.store.userIdentity.email) {
-      return { sourceAccountIdentifier: this.store.userIdentity.email }
-    } else {
-      this.log('debug', "Couldn't get a sourceAccountIdentifier, using default")
-      return { sourceAccountIdentifier: DEFAULT_SOURCE_ACCOUNT_IDENTIFIER }
+    await this.runInWorker('getUserDatas')
+    return {
+      sourceAccountIdentifier: this.store.userIdentity.email
+        ? this.store.userIdentity.email
+        : DEFAULT_SOURCE_ACCOUNT_IDENTIFIER
     }
   }
 
@@ -151,33 +124,40 @@ class TemplateContentScript extends ContentScript {
         qualificationLabel: 'energy_invoice'
       })
     ])
-    await this.clickAndWait('#header-deconnexion', '#idEspaceClientDiv')
   }
-
-  async tryAutoLogin(credentials) {
-    this.log('debug', 'Trying autologin')
-    const isSuccess = await this.autoLogin(credentials)
-    return isSuccess
+  async checkSession() {
+    this.log('debug', 'Starting checkSession')
+    /*
+     * Here we wait for 3 secondes as the website could be a bit long to make the form interactive.
+     * It may be present but not visible yet despite CSS is not actually hidding it,
+     * the website take some times to apply the hidden class if it needs one.
+     * It seems like there's no request sent login-form related to modify its class or anything else we could intercept to ensure the page wont change.
+     * Cookies are no help too as the token or the refresh token are still present in the case of an active
+     * session AND in case of a new auth needed. This sleep is for now the only way to ensure that nothing will change before executing
+     * the rest of the connector's code and know in wich scenario we are in at the moment as there is ALWAYS a form
+     * in the page, either scenarios (session or new auth).
+     * It has been discuss and agreed to keep it that way even if it's clearly not recommended.
+     */
+    await sleep(3000)
+    const isFormInvisble = await this.runInWorker('checkActiveSession')
+    if (isFormInvisble) {
+      return true
+    } else {
+      return false
+    }
   }
 
   async autoLogin(credentials) {
-    this.log('debug', 'Starting autologin')
-    const selectors = {
-      email: '#email',
-      password: '#motdepasse',
-      loginButton: '#login-btn'
-    }
-    await this.waitForElementInWorker(selectors.loginButton)
-    await this.runInWorker('handleForm', { selectors, credentials })
-    await this.runInWorkerUntilTrue({
-      method: 'waitForInterception',
-      timeout: 30000
-    })
-    await this.runInWorkerUntilTrue({
-      method: 'checkIfLoggedWithAutoLogin',
-      timeout: 30000
-    })
-    return true
+    this.log('info', 'AutoLogin starts')
+    await Promise.all([
+      this.waitForElementInWorker('#email'),
+      this.waitForElementInWorker('#motdepasse'),
+      this.waitForElementInWorker('#login-btn')
+    ])
+    await this.runInWorker('handleForm', credentials)
+    const isLoginFailed = await this.runInWorker('checkLoginFail')
+    if (isLoginFailed) return false
+    else return true
   }
 
   // ////////
@@ -205,7 +185,6 @@ class TemplateContentScript extends ContentScript {
       this.log('debug', 'Auth Check succeeded')
       return true
     }
-    this.log('debug', 'Not respecting condition, returning false')
     return false
   }
 
@@ -218,68 +197,6 @@ class TemplateContentScript extends ContentScript {
       password: userPassword
     }
     return userCredentials
-  }
-
-  async waitForInterception() {
-    if (XHRResponses.length === 0) {
-      return false
-    }
-    await this.sendToPilot({ XHRResponses })
-    return true
-  }
-
-  async checkIfLogged() {
-    this.log('debug', 'Starting checkIfLogged')
-    const mailInput = document.querySelector('#email')
-    const logoutButton = document.querySelector('#header-deconnexion')
-    if (mailInput) {
-      return false
-    }
-    if (logoutButton) {
-      return true
-    }
-  }
-
-  async handleForm(loginData) {
-    this.log('debug', 'Starting handleForm')
-    const loginElement = document.querySelector(loginData.selectors.email)
-    const passwordElement = document.querySelector(loginData.selectors.password)
-    const submitButton = document.querySelector(loginData.selectors.loginButton)
-    loginElement.value = loginData.credentials.login
-    passwordElement.value = loginData.credentials.password
-    submitButton.click()
-  }
-
-  async checkIfLoggedWithAutoLogin() {
-    if (
-      document.location.href.includes(HOMEPAGE_URL) &&
-      document.querySelector('#blocData')
-    ) {
-      return true
-    }
-    return false
-  }
-
-  async checkIfFullfilled() {
-    function sortTruthy(value) {
-      return value !== undefined
-    }
-    const neededInfos = [
-      document.querySelector('#idEmailContact_Infos'),
-      document.querySelector('#ProfilConsulterAdresseFacturation_nomComplet'),
-      document.querySelector('#ProfilConsulterAdresseFacturation_adresse'),
-      document.querySelector(
-        '#ProfilConsulterAdresseFacturation_complementAdresse'
-      ),
-      document.querySelector('#ProfilConsulterAdresseFacturation_commune'),
-      document.querySelector('#idNumerosTelephone_Infos')
-    ]
-    const truthyInfos = neededInfos.filter(sortTruthy)
-
-    if (truthyInfos.length === neededInfos.length) {
-      return true
-    }
-    return false
   }
 
   async getUserIdentity() {
@@ -331,11 +248,20 @@ class TemplateContentScript extends ContentScript {
     await this.sendToPilot({ userIdentity })
   }
 
-  async getUserDatas(datasToCompute) {
+  async getUserDatas() {
     this.log('debug', 'Starting getUserDatas')
     let bills = []
-
-    for (let bill of datasToCompute[0].listeFactures) {
+    const timestamp = Math.round(new Date().getTime() / 1000)
+    const creatStartInterval = new Date()
+    creatStartInterval.setFullYear(2000)
+    const formattedStartInterval = creatStartInterval.toISOString().slice(0, 10)
+    const endInterval = new Date().toISOString().slice(0, 10)
+    const foundBills = await window
+      .fetch(
+        `https://gaz-tarif-reglemente.fr/digitaltr-facture/api/private/facturesarchives?dateDebutIntervalle=${formattedStartInterval}T14%3A10%3A39.596Z&dateFinIntervalle=${endInterval}T14%3A10%3A39.596Z&_=${timestamp}`
+      )
+      .then(res => res.json())
+    for (let bill of foundBills.listeFactures) {
       const amount = bill.montantTTC.montant
       const currency = '€'
       const documentType = bill.libelle
@@ -376,19 +302,134 @@ class TemplateContentScript extends ContentScript {
     }
     await this.sendToPilot({ bills })
   }
+
+  async checkIfLoggedAtStart() {
+    this.log('info', 'First authentication check')
+    const isHidden = document
+      .querySelector('#idEspaceClientDivMobileConnected')
+      .getAttribute('class')
+      .includes('u-hide')
+    if (isHidden) {
+      return false
+    } else {
+      return true
+    }
+  }
+
+  async checkWelcomeMessage() {
+    this.log('info', 'checkWelcomeMessage starts')
+    if (
+      document.querySelector('.c-headerCelUser__name').textContent.length > 0 &&
+      document.querySelector('.contrat-en-cours').textContent.length > 0
+    )
+      return true
+    else return false
+  }
+
+  async checkIfFullfilled() {
+    function sortTruthy(value) {
+      return value.length > 0
+    }
+    const neededInfos = [
+      document.querySelector('#idEmailContact_Infos').textContent,
+      document.querySelector('#ProfilConsulterAdresseFacturation_nomComplet')
+        .textContent,
+      document.querySelector('#ProfilConsulterAdresseFacturation_adresse')
+        .textContent,
+      document.querySelector(
+        '#ProfilConsulterAdresseFacturation_complementAdresse'
+      ).textContent,
+      document.querySelector('#ProfilConsulterAdresseFacturation_commune')
+        .textContent,
+      document.querySelector('#idNumerosTelephone_Infos').textContent
+    ]
+    const truthyInfos = neededInfos.filter(sortTruthy)
+
+    if (truthyInfos.length === neededInfos.length) {
+      return true
+    }
+    return false
+  }
+
+  async checkActiveSession() {
+    this.log('debug', 'Starting checkActiveSession')
+    const formIsInvisible = document
+      .querySelector('#view-mode-non-connecte')
+      .getAttribute('class')
+      .includes('u-hide')
+    if (formIsInvisible) {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  async handleForm(credentials) {
+    this.log('debug', 'Starting handleForm')
+    const loginElement = document.querySelector('input[id="email"]')
+    const passwordElement = document.querySelector('input[id="motdepasse"]')
+    const submitButton = document.querySelector('button[id="login-btn"]')
+
+    loginElement.value = credentials.login
+    passwordElement.value = credentials.password
+    if (loginElement.value.length > 0 && passwordElement.value.length > 0) {
+      this.log('info', 'Login and password fullfilled')
+      submitButton.click()
+      return true
+    } else {
+      this.log('warn', 'something went wrong while filling values')
+      return false
+    }
+  }
+
+  async checkLoginFail() {
+    const errorElement = document
+      .querySelector('#js-login-global-error')
+      .getAttribute('data-marquage_info')
+    if (errorElement !== null) return true
+    else return false
+  }
+
+  async logout() {
+    this.log('info', 'Logout starts')
+    const logoutButton = document.querySelector('#deconnexionBtnloginPage')
+    logoutButton.click()
+    return true
+  }
+
+  async ensureLoggedOut() {
+    this.log('info', 'ensureLoggedOut starts')
+    const actualHref = document.location.href
+    if (actualHref === 'https://gaz-tarif-reglemente.fr/') {
+      return true
+    }
+    return false
+  }
+
+  async goToLoginForm() {
+    this.log('info', 'goToLoginPage starts')
+    const loginPageButton = document.querySelector('#idEspaceClientDivMobile')
+    loginPageButton.click()
+  }
 }
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const connector = new TemplateContentScript()
 connector
   .init({
     additionalExposedMethodsNames: [
-      'checkIfLogged',
-      'handleForm',
-      'checkIfLoggedWithAutoLogin',
+      'checkIfLoggedAtStart',
       'getUserIdentity',
       'getUserDatas',
-      'waitForInterception',
-      'checkIfFullfilled'
+      'checkIfFullfilled',
+      'checkWelcomeMessage',
+      'checkActiveSession',
+      'handleForm',
+      'checkLoginFail',
+      'logout',
+      'ensureLoggedOut',
+      'goToLoginForm'
     ]
   })
   .catch(err => {
