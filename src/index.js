@@ -18,7 +18,7 @@ class TemplateContentScript extends ContentScript {
     const sessionIsActive = await this.checkSession()
     if (sessionIsActive) {
       this.log('info', 'Found an active session, logging out')
-      await this.runInWorker('logout')
+      await this.runInWorker('ensureNotAuthenticated')
       // Here we need to force the BASE_URL to reload the page after logout, ensuring a good execution.
       await this.goto(BASE_URL)
       await this.waitForElementInWorker('div[class="quickAccessV3 section"]')
@@ -390,8 +390,8 @@ class TemplateContentScript extends ContentScript {
     else return false
   }
 
-  async logout() {
-    this.log('info', 'Logout starts')
+  async ensureNotAuthenticated() {
+    this.log('info', 'ensureNotAuthenticated starts')
     const logoutButton = document.querySelector('#deconnexionBtnloginPage')
     logoutButton.click()
     return true
@@ -427,7 +427,7 @@ connector
       'checkActiveSession',
       'handleForm',
       'checkLoginFail',
-      'logout',
+      'ensureNotAuthenticated',
       'ensureLoggedOut',
       'goToLoginForm'
     ]
