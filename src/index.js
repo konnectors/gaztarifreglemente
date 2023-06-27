@@ -6,30 +6,36 @@ Minilog.enable('gaztarifreglementeCCC')
 
 const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'gaz tarif reglemente'
 const BASE_URL = 'https://gaz-tarif-reglemente.fr/'
-const LOGIN_URL = 'https://gaz-tarif-reglemente.fr/login-page.html'
+const LOGIN_URL = `${BASE_URL}login-page.html`
 class TemplateContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
-  async ensureAuthenticated() {
+  async navigateToLoginForm() {
+    this.log('info', 'navigateToLoginForm starts')
     await this.goto(LOGIN_URL)
+    // Connected or not, the form login will be found
     await this.waitForElementInWorker('#login-form')
+  }
 
-    const sessionIsActive = await this.checkSession()
-    if (sessionIsActive) {
-      this.log('info', 'Found an active session, logging out')
-      await this.runInWorker('logout')
-      // Here we need to force the BASE_URL to reload the page after logout, ensuring a good execution.
-      await this.goto(BASE_URL)
-      await this.waitForElementInWorker('div[class="quickAccessV3 section"]')
-      await this.runInWorkerUntilTrue({
-        method: 'ensureLoggedOut',
-        timeout: 5000
-      })
-      await this.waitForElementInWorker('#idEspaceClientDivMobile')
-      await this.runInWorker('goToLoginForm')
-      await this.checkSession()
+  async ensureNotAuthenticated() {
+    this.log('info', 'ensureNotAuthenticated starts')
+    await this.navigateToLoginForm()
+    const authenticated = await this.runInWorker('checkActiveSession')
+    if (!authenticated) {
+      this.log('info', 'Not auth, returning true')
+      return true
     }
+    this.log('info', 'Already logged, logging out')
+    await this.runInWorker('click', '#headerDeconnexionBtnMobile')
+    await this.waitForElementInWorker(
+      '#engie_fournisseur_d_electricite_et_de_gaz_naturel_quickaccessv3_la_fin_des_tarifs_reglementes_du_gaz'
+    )
+  }
+
+  async ensureAuthenticated() {
+    this.log('info', 'ensureAuthenticated starts')
+    await this.navigateToLoginForm()
     const credentials = await this.getCredentials()
     if (credentials) {
       this.log('info', 'Credentials found')
@@ -303,19 +309,6 @@ class TemplateContentScript extends ContentScript {
     await this.sendToPilot({ bills })
   }
 
-  async checkIfLoggedAtStart() {
-    this.log('info', 'First authentication check')
-    const isHidden = document
-      .querySelector('#idEspaceClientDivMobileConnected')
-      .getAttribute('class')
-      .includes('u-hide')
-    if (isHidden) {
-      return false
-    } else {
-      return true
-    }
-  }
-
   async checkWelcomeMessage() {
     this.log('info', 'checkWelcomeMessage starts')
     if (
@@ -389,28 +382,6 @@ class TemplateContentScript extends ContentScript {
     if (errorElement !== null) return true
     else return false
   }
-
-  async logout() {
-    this.log('info', 'Logout starts')
-    const logoutButton = document.querySelector('#deconnexionBtnloginPage')
-    logoutButton.click()
-    return true
-  }
-
-  async ensureLoggedOut() {
-    this.log('info', 'ensureLoggedOut starts')
-    const actualHref = document.location.href
-    if (actualHref === 'https://gaz-tarif-reglemente.fr/') {
-      return true
-    }
-    return false
-  }
-
-  async goToLoginForm() {
-    this.log('info', 'goToLoginPage starts')
-    const loginPageButton = document.querySelector('#idEspaceClientDivMobile')
-    loginPageButton.click()
-  }
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -419,7 +390,6 @@ const connector = new TemplateContentScript()
 connector
   .init({
     additionalExposedMethodsNames: [
-      'checkIfLoggedAtStart',
       'getUserIdentity',
       'getUserDatas',
       'checkIfFullfilled',
@@ -427,9 +397,7 @@ connector
       'checkActiveSession',
       'handleForm',
       'checkLoginFail',
-      'logout',
-      'ensureLoggedOut',
-      'goToLoginForm'
+      'navigateToLoginForm'
     ]
   })
   .catch(err => {
