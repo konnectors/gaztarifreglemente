@@ -48,6 +48,16 @@ class TemplateContentScript extends ContentScript {
 
   async authWithCredentials(credentials) {
     this.log('debug', 'Starting authWithCredentials')
+    if (await this.isElementInWorker('#view-mode-connecte-sans-ec')) {
+      const isActive = await this.checkSession()
+      if (isActive) {
+        await this.clickAndWait(
+          '#lien-selectionner-reference-client',
+          '#header-deconnexion'
+        )
+        return true
+      }
+    }
     const isSuccess = await this.autoLogin(credentials)
     if (isSuccess) {
       return true
