@@ -112,12 +112,7 @@ class TemplateContentScript extends ContentScript {
       timeout: 30000
     })
     await this.runInWorker('getUserIdentity')
-    await this.runInWorker(
-      'click',
-      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
-    )
-    await this.waitForElementInWorker('#factures-listeFacture')
-    await this.runInWorker('getUserDatas')
+    await this.saveIdentity(this.store.userIdentity)
     return {
       sourceAccountIdentifier: this.store.userIdentity.email
         ? this.store.userIdentity.email
@@ -130,16 +125,19 @@ class TemplateContentScript extends ContentScript {
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
     }
-    await Promise.all([
-      this.saveIdentity(this.store.userIdentity),
-      this.saveBills(this.store.bills, {
-        context,
-        keys: ['vendorRef'],
-        contentType: 'application/pdf',
-        fileIdAttributes: ['filename'],
-        qualificationLabel: 'energy_invoice'
-      })
-    ])
+    await this.runInWorker(
+      'click',
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
+    )
+    await this.waitForElementInWorker('#factures-listeFacture')
+    await this.runInWorker('getUserDatas')
+    await this.saveBills(this.store.bills, {
+      context,
+      keys: ['vendorRef'],
+      contentType: 'application/pdf',
+      fileIdAttributes: ['filename'],
+      qualificationLabel: 'energy_invoice'
+    })
   }
   async checkSession() {
     this.log('debug', 'Starting checkSession')
