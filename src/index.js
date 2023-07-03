@@ -33,8 +33,11 @@ class TemplateContentScript extends ContentScript {
     )
   }
 
-  async ensureAuthenticated() {
+  async ensureAuthenticated({ account }) {
     this.log('info', 'ensureAuthenticated starts')
+    if (!account) {
+      await this.ensureNotAuthenticated()
+    }
     await this.navigateToLoginForm()
     const credentials = await this.getCredentials()
     if (credentials) {
