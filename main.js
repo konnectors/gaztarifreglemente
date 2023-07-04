@@ -7985,8 +7985,11 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     )
   }
 
-  async ensureAuthenticated() {
+  async ensureAuthenticated({ account }) {
     this.log('info', 'ensureAuthenticated starts')
+    if (!account) {
+      await this.ensureNotAuthenticated()
+    }
     await this.navigateToLoginForm()
     const credentials = await this.getCredentials()
     if (credentials) {
@@ -8000,6 +8003,16 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
 
   async authWithCredentials(credentials) {
     this.log('debug', 'Starting authWithCredentials')
+    if (await this.isElementInWorker('#view-mode-connecte-sans-ec')) {
+      const isActive = await this.checkSession()
+      if (isActive) {
+        await this.clickAndWait(
+          '#lien-selectionner-reference-client',
+          '#header-deconnexion'
+        )
+        return true
+      }
+    }
     const isSuccess = await this.autoLogin(credentials)
     if (isSuccess) {
       return true
@@ -8054,12 +8067,7 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
       timeout: 30000
     })
     await this.runInWorker('getUserIdentity')
-    await this.runInWorker(
-      'click',
-      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
-    )
-    await this.waitForElementInWorker('#factures-listeFacture')
-    await this.runInWorker('getUserDatas')
+    await this.saveIdentity(this.store.userIdentity)
     return {
       sourceAccountIdentifier: this.store.userIdentity.email
         ? this.store.userIdentity.email
@@ -8072,16 +8080,19 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
     }
-    await Promise.all([
-      this.saveIdentity(this.store.userIdentity),
-      this.saveBills(this.store.bills, {
-        context,
-        keys: ['vendorRef'],
-        contentType: 'application/pdf',
-        fileIdAttributes: ['filename'],
-        qualificationLabel: 'energy_invoice'
-      })
-    ])
+    await this.runInWorker(
+      'click',
+      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
+    )
+    await this.waitForElementInWorker('#factures-listeFacture')
+    await this.runInWorker('getUserDatas')
+    await this.saveBills(this.store.bills, {
+      context,
+      keys: ['vendorRef'],
+      contentType: 'application/pdf',
+      fileIdAttributes: ['filename'],
+      qualificationLabel: 'energy_invoice'
+    })
   }
   async checkSession() {
     this.log('debug', 'Starting checkSession')
