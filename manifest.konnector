@@ -1,6 +1,6 @@
 {
   "version": "2.6.0",
-  "name": "Gaz Tarif Réglementé",
+  "name": "Gaz Passerelle Engie",
   "type": "konnector",
   "language": "node",
   "clientSide": true,
@@ -8,7 +8,7 @@
   "slug": "gaztarifreglemente",
   "source": "git@github.com:konnectors/gaztarifreglemente.git",
   "editor": "Cozy",
-  "vendor_link": "https://gaz-tarif-reglemente.fr/",
+  "vendor_link": "https://gazpasserelle.engie.fr/",
   "categories": [
     "energy_invoice"
   ],

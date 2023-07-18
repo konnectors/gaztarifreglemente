@@ -1,11 +1,12 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import { format } from 'date-fns'
+import waitFor from 'p-wait-for'
 import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
-Minilog.enable('gaztarifreglementeCCC')
+Minilog.enable('gazpasserelleCCC')
 
-const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'gaz tarif reglemente'
-const BASE_URL = 'https://gaz-tarif-reglemente.fr/'
+const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'gaz passerelle engie'
+const BASE_URL = 'https://gazpasserelle.engie.fr/'
 const LOGIN_URL = `${BASE_URL}login-page.html`
 class TemplateContentScript extends ContentScript {
   // ////////
@@ -29,7 +30,7 @@ class TemplateContentScript extends ContentScript {
     this.log('info', 'Already logged, logging out')
     await this.runInWorker('click', '#headerDeconnexionBtnMobile')
     await this.waitForElementInWorker(
-      '#engie_fournisseur_d_electricite_et_de_gaz_naturel_quickaccessv3_la_fin_des_tarifs_reglementes_du_gaz'
+      '#engie_fournisseur_d_electricite_et_de_gaz_naturel_quickaccessv3_contrat_gaz_passerelle'
     )
   }
 
@@ -89,11 +90,11 @@ class TemplateContentScript extends ContentScript {
     await this.waitForElementInWorker('.c-headerCelUser__name')
     await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
     await this.waitForElementInWorker(
-      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/espace-client/profil-et-contrats.html"]'
     )
     await this.runInWorker(
       'click',
-      'a[href="/content/engie-tr/particuliers/espace-client-tr/profil-et-contrats.html"]'
+      'a[href="/espace-client/profil-et-contrats.html"]'
     )
     await this.waitForElementInWorker('.c-headerCelUser__name')
     await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
@@ -130,15 +131,15 @@ class TemplateContentScript extends ContentScript {
     }
     await this.runInWorker(
       'click',
-      'a[href="/content/engie-tr/particuliers/espace-client-tr/factures-et-paiements.html"]'
+      'a[href="/espace-client/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
-    await this.runInWorker('getUserDatas')
-    await this.saveBills(this.store.bills, {
+    const bills = await this.runInWorker('getUserDatas')
+    await this.saveBills(bills, {
       context,
       keys: ['vendorRef'],
       contentType: 'application/pdf',
-      fileIdAttributes: ['filename'],
+      fileIdAttributes: ['vendorRef'],
       qualificationLabel: 'energy_invoice'
     })
   }
@@ -268,23 +269,29 @@ class TemplateContentScript extends ContentScript {
   async getUserDatas() {
     this.log('debug', 'Starting getUserDatas')
     let bills = []
-    const timestamp = Math.round(new Date().getTime() / 1000)
-    const creatStartInterval = new Date()
-    creatStartInterval.setFullYear(2000)
-    const formattedStartInterval = creatStartInterval.toISOString().slice(0, 10)
-    const endInterval = new Date().toISOString().slice(0, 10)
-    const foundBills = await window
-      .fetch(
-        `https://gaz-tarif-reglemente.fr/digitaltr-facture/api/private/facturesarchives?dateDebutIntervalle=${formattedStartInterval}T14%3A10%3A39.596Z&dateFinIntervalle=${endInterval}T14%3A10%3A39.596Z&_=${timestamp}`
-      )
-      .then(res => res.json())
-    for (let bill of foundBills.listeFactures) {
-      const amount = bill.montantTTC.montant
+    let foundBills = []
+    await this.waitForSessionStorage()
+    const refBP = window.sessionStorage.getItem('CEL_REFBP')
+    const billsJSON = JSON.parse(
+      window.sessionStorage.getItem('CEL_MOM_FACTURES')
+    )
+    const allBills = billsJSON[`${refBP}`]
+    const allBillsEntries = Object.keys(billsJSON[`${refBP}`])
+    for (const billsEntry of allBillsEntries) {
+      if (!allBills[billsEntry]) {
+        continue
+      }
+      const fullObject = allBills[billsEntry]
+      const values = Object.values(fullObject)
+      values.forEach(value => foundBills.push(value))
+    }
+    for (let bill of foundBills) {
+      const amount = bill.montant
       const currency = '€'
       const documentType = bill.libelle
       const billDate = new Date(bill.dateFacture)
       const formattedDate = format(billDate, 'dd_MM_yyyy')
-      const vendorRef = bill.numeroFacture
+      const vendorRef = bill.id
       const decodeFileHref = `${decodeURIComponent(bill.url)}`
       const doubleEncodedFileHref = encodeURIComponent(
         encodeURIComponent(decodeFileHref)
@@ -295,18 +302,18 @@ class TemplateContentScript extends ContentScript {
       const computedBill = {
         amount,
         currency,
-        fileurl: `https://gaz-tarif-reglemente.fr/digitaltr-util/api/private/document/mobile/attachment/${doubleEncodedFileHref}/SAE/${formattedDate.replace(
+        fileurl: `https://gazpasserelle.engie.fr/digitaltr-util/api/private/document/mobile/attachment/${doubleEncodedFileHref}/SAE/${formattedDate.replace(
           /_/g,
           ''
         )}-${doubleEncodedNumber}.pdf?`,
-        filename: `${formattedDate}_Gaz-tarif-reglemente_${amount}${currency}.pdf`,
+        filename: `${formattedDate}_Gaz-Passerelle-Engie_${amount}${currency}.pdf`,
         documentType,
         date: billDate,
-        vendor: 'Gaz Tarif Réglementé',
+        vendor: 'Gaz Passerelle Engie',
         vendorRef,
         fileAttributes: {
           metadata: {
-            contentAuthor: 'gaz tarif réglementé',
+            contentAuthor: 'gaz passerelle',
             datetime: billDate,
             datetimeLabel: 'issueDate',
             isSubscription: true,
@@ -317,7 +324,7 @@ class TemplateContentScript extends ContentScript {
       }
       bills.push(computedBill)
     }
-    await this.sendToPilot({ bills })
+    return bills
   }
 
   async checkWelcomeMessage() {
@@ -325,9 +332,10 @@ class TemplateContentScript extends ContentScript {
     if (
       document.querySelector('.c-headerCelUser__name').textContent.length > 0 &&
       document.querySelector('.contrat-en-cours').textContent.length > 0
-    )
+    ) {
+      document.querySelector('.c-headerCelUser__name').remove()
       return true
-    else return false
+    } else return false
   }
 
   async checkIfFullfilled() {
@@ -392,6 +400,21 @@ class TemplateContentScript extends ContentScript {
       .getAttribute('data-marquage_info')
     if (errorElement !== null) return true
     else return false
+  }
+
+  async waitForSessionStorage() {
+    await waitFor(
+      () => {
+        const result = Boolean(
+          window.sessionStorage.getItem('CEL_MOM_FACTURES')
+        )
+        return result
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
   }
 }
 
