@@ -340,38 +340,58 @@ class TemplateContentScript extends ContentScript {
 
   async checkWelcomeMessage() {
     this.log('info', 'checkWelcomeMessage starts')
-    if (
-      document.querySelector('.c-headerCelUser__name').textContent.length > 0 &&
-      document.querySelector('.contrat-en-cours').textContent.length > 0
-    ) {
-      document.querySelector('.c-headerCelUser__name').remove()
-      return true
-    } else return false
+    await waitFor(
+      () => {
+        if (
+          document.querySelector('.c-headerCelUser__name').textContent.length >
+            0 &&
+          document.querySelector('.contrat-en-cours').textContent.length > 0
+        ) {
+          document.querySelector('.c-headerCelUser__name').remove()
+          return true
+        } else return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async checkIfFullfilled() {
-    function sortTruthy(value) {
-      return value.length > 0
-    }
-    const neededInfos = [
-      document.querySelector('#idEmailContact_Infos').textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_nomComplet')
-        .textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_adresse')
-        .textContent,
-      document.querySelector(
-        '#ProfilConsulterAdresseFacturation_complementAdresse'
-      ).textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_commune')
-        .textContent,
-      document.querySelector('#idNumerosTelephone_Infos').textContent
-    ]
-    const truthyInfos = neededInfos.filter(sortTruthy)
+    await waitFor(
+      () => {
+        function sortTruthy(value) {
+          return value.length > 0
+        }
+        const neededInfos = [
+          document.querySelector('#idEmailContact_Infos').textContent,
+          document.querySelector(
+            '#ProfilConsulterAdresseFacturation_nomComplet'
+          ).textContent,
+          document.querySelector('#ProfilConsulterAdresseFacturation_adresse')
+            .textContent,
+          document.querySelector(
+            '#ProfilConsulterAdresseFacturation_complementAdresse'
+          ).textContent,
+          document.querySelector('#ProfilConsulterAdresseFacturation_commune')
+            .textContent,
+          document.querySelector('#idNumerosTelephone_Infos').textContent
+        ]
+        const truthyInfos = neededInfos.filter(sortTruthy)
 
-    if (truthyInfos.length === neededInfos.length) {
-      return true
-    }
-    return false
+        if (truthyInfos.length === neededInfos.length) {
+          return true
+        }
+        return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async checkActiveSession() {
