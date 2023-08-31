@@ -16,7 +16,11 @@ class TemplateContentScript extends ContentScript {
     this.log('info', 'navigateToLoginForm starts')
     await this.goto(LOGIN_URL)
     // Connected or not, the form login will be found
-    await this.waitForElementInWorker('#login-form')
+    await Promise.all([
+      this.waitForElementInWorker('#login-form'),
+      // This is the selector for the chatBot element, it always appears amongst the last loaded elements
+      this.waitForElementInWorker('#cai-webchat-div')
+    ])
   }
 
   async ensureNotAuthenticated() {
@@ -32,6 +36,13 @@ class TemplateContentScript extends ContentScript {
     await this.waitForElementInWorker(
       '#engie_fournisseur_d_electricite_et_de_gaz_naturel_quickaccessv3_contrat_gaz_passerelle'
     )
+    const foundMainUrl = await this.evaluateInWorker(function checkMainUrl() {
+      return document.location.href === 'https://gazpasserelle.engie.fr/'
+    })
+    if (foundMainUrl) {
+      this.log('info', 'Logged out')
+    }
+    this.log('error', 'Something went unexpected after log out')
   }
 
   async ensureAuthenticated({ account }) {
@@ -197,7 +208,7 @@ class TemplateContentScript extends ContentScript {
       })
     }
     if (
-      document.location.href.includes('espace-client-tr/synthese.html') &&
+      document.location.href.includes('espace-client/synthese.html') &&
       document.querySelector('#header-deconnexion')
     ) {
       this.log('debug', 'Auth Check succeeded')
@@ -329,38 +340,58 @@ class TemplateContentScript extends ContentScript {
 
   async checkWelcomeMessage() {
     this.log('info', 'checkWelcomeMessage starts')
-    if (
-      document.querySelector('.c-headerCelUser__name').textContent.length > 0 &&
-      document.querySelector('.contrat-en-cours').textContent.length > 0
-    ) {
-      document.querySelector('.c-headerCelUser__name').remove()
-      return true
-    } else return false
+    await waitFor(
+      () => {
+        if (
+          document.querySelector('.c-headerCelUser__name').textContent.length >
+            0 &&
+          document.querySelector('.contrat-en-cours').textContent.length > 0
+        ) {
+          document.querySelector('.c-headerCelUser__name').remove()
+          return true
+        } else return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async checkIfFullfilled() {
-    function sortTruthy(value) {
-      return value.length > 0
-    }
-    const neededInfos = [
-      document.querySelector('#idEmailContact_Infos').textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_nomComplet')
-        .textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_adresse')
-        .textContent,
-      document.querySelector(
-        '#ProfilConsulterAdresseFacturation_complementAdresse'
-      ).textContent,
-      document.querySelector('#ProfilConsulterAdresseFacturation_commune')
-        .textContent,
-      document.querySelector('#idNumerosTelephone_Infos').textContent
-    ]
-    const truthyInfos = neededInfos.filter(sortTruthy)
+    await waitFor(
+      () => {
+        function sortTruthy(value) {
+          return value.length > 0
+        }
+        const neededInfos = [
+          document.querySelector('#idEmailContact_Infos').textContent,
+          document.querySelector(
+            '#ProfilConsulterAdresseFacturation_nomComplet'
+          ).textContent,
+          document.querySelector('#ProfilConsulterAdresseFacturation_adresse')
+            .textContent,
+          document.querySelector(
+            '#ProfilConsulterAdresseFacturation_complementAdresse'
+          ).textContent,
+          document.querySelector('#ProfilConsulterAdresseFacturation_commune')
+            .textContent,
+          document.querySelector('#idNumerosTelephone_Infos').textContent
+        ]
+        const truthyInfos = neededInfos.filter(sortTruthy)
 
-    if (truthyInfos.length === neededInfos.length) {
-      return true
-    }
-    return false
+        if (truthyInfos.length === neededInfos.length) {
+          return true
+        }
+        return false
+      },
+      {
+        interval: 1000,
+        timeout: 30 * 1000
+      }
+    )
+    return true
   }
 
   async checkActiveSession() {
