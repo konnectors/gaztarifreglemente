@@ -8298,7 +8298,6 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
       timeout: 30000
     })
     await this.runInWorker('getUserIdentity')
-    await this.saveIdentity(this.store.userIdentity)
     return {
       sourceAccountIdentifier: this.store.userIdentity.email
         ? this.store.userIdentity.email
@@ -8310,6 +8309,9 @@ class TemplateContentScript extends cozy_clisk_dist_contentscript__WEBPACK_IMPOR
     this.log('debug', 'Starting fetch')
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
+    }
+    if (this.store.userIdentity) {
+      await this.saveIdentity({ contact: this.store.userIdentity })
     }
     await this.runInWorker(
       'click',
