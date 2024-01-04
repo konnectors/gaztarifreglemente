@@ -5,7 +5,6 @@ import Minilog from '@cozy/minilog'
 const log = Minilog('ContentScript')
 Minilog.enable('gazpasserelleCCC')
 
-const DEFAULT_SOURCE_ACCOUNT_IDENTIFIER = 'gaz passerelle engie'
 const BASE_URL = 'https://gazpasserelle.engie.fr/'
 const LOGIN_URL = `${BASE_URL}login-page.html`
 class TemplateContentScript extends ContentScript {
@@ -59,7 +58,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async navigateToLoginForm() {
-    this.log('info', 'navigateToLoginForm starts')
+    this.log('info', '📍️ navigateToLoginForm starts')
     await this.goto(LOGIN_URL)
     // Connected or not, the form login will be found
     await Promise.all([
@@ -70,7 +69,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async ensureNotAuthenticated() {
-    this.log('info', 'ensureNotAuthenticated starts')
+    this.log('info', '📍️ ensureNotAuthenticated starts')
     await this.navigateToLoginForm()
     const authenticated = await this.runInWorker('checkActiveSession')
     if (!authenticated) {
@@ -92,7 +91,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async ensureAuthenticated({ account }) {
-    this.log('info', 'ensureAuthenticated starts')
+    this.log('info', '📍️ ensureAuthenticated starts')
     this.bridge.addEventListener('workerEvent', this.onWorkerEvent.bind(this))
     if (!account) {
       await this.ensureNotAuthenticated()
@@ -109,7 +108,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async authWithCredentials(credentials) {
-    this.log('debug', 'Starting authWithCredentials')
+    this.log('debug', '📍️ Starting authWithCredentials')
     if (await this.isElementInWorker('#view-mode-connecte-sans-ec')) {
       const isActive = await this.checkSession()
       if (isActive) {
@@ -130,64 +129,46 @@ class TemplateContentScript extends ContentScript {
   }
 
   async authWithoutCredentials() {
-    this.log('debug', 'Starting authWithoutCredentials')
+    this.log('debug', '📍️ Starting authWithoutCredentials')
     await this.waitForElementInWorker('#login-form')
     await this.waitForElementInWorker('#email')
     await this.waitForUserAuthentication()
   }
 
   async waitForUserAuthentication() {
-    this.log('debug', 'waitForUserAuthentication starts')
+    this.log('debug', '📍️ waitForUserAuthentication starts')
     await this.setWorkerState({ visible: true })
     await this.runInWorkerUntilTrue({ method: 'waitForAuthenticated' })
     await this.setWorkerState({ visible: false })
   }
 
   async getUserDataFromWebsite() {
-    this.log('debug', 'Starting getUserDataFromWebsite')
-    await this.waitForElementInWorker('.c-headerCelUser__name')
-    await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
-    await this.waitForElementInWorker(
-      'a[href="/espace-client/profil-et-contrats.html"]'
-    )
-    await this.runInWorker(
-      'click',
-      'a[href="/espace-client/profil-et-contrats.html"]'
-    )
-    await this.waitForElementInWorker('.c-headerCelUser__name')
-    await this.runInWorkerUntilTrue({ method: 'checkWelcomeMessage' })
-    await Promise.all([
-      this.waitForElementInWorker('#idEmailContact_Infos'),
-      this.waitForElementInWorker(
-        '#ProfilConsulterAdresseFacturation_nomComplet'
-      ),
-      this.waitForElementInWorker('#ProfilConsulterAdresseFacturation_adresse'),
-      this.waitForElementInWorker(
-        '#ProfilConsulterAdresseFacturation_complementAdresse'
-      ),
-      this.waitForElementInWorker('#ProfilConsulterAdresseFacturation_commune'),
-      this.waitForElementInWorker('#idNumerosTelephone_Infos')
-    ])
-    // After receiving needed elements, we're checking if everything's fine for scraping
-    await this.runInWorkerUntilTrue({
-      method: 'checkIfFullfilled',
-      timeout: 30000
-    })
-    await this.runInWorker('getUserIdentity')
+    this.log('info', '🤖 getUserDataFromWebsite starts')
+    const credentials = await this.getCredentials()
+    const credentialsLogin = credentials?.login
+    const storeLogin = this.store?.userCredentials?.login
+    // prefer credentials over user email since it may not be know by the user
+    let sourceAccountIdentifier = credentialsLogin || storeLogin
+    if (!sourceAccountIdentifier) {
+      await this.runInWorker('waitForSessionStorage', 'email')
+      sourceAccountIdentifier = await this.runInWorker('getUserMail')
+    }
+    if (!sourceAccountIdentifier) {
+      throw new Error('Could not get a sourceAccountIdentifier')
+    }
     return {
-      sourceAccountIdentifier: this.store.userIdentity.email
-        ? this.store.userIdentity.email
-        : DEFAULT_SOURCE_ACCOUNT_IDENTIFIER
+      sourceAccountIdentifier: sourceAccountIdentifier
     }
   }
 
+  async getUserMail() {
+    return window.sessionStorage.email
+  }
+
   async fetch(context) {
-    this.log('debug', 'Starting fetch')
+    this.log('debug', '🤖 Starting fetch')
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
-    }
-    if (this.store.userIdentity) {
-      await this.saveIdentity({ contact: this.store.userIdentity })
     }
     await this.runInWorker(
       'click',
@@ -202,9 +183,14 @@ class TemplateContentScript extends ContentScript {
       fileIdAttributes: ['vendorRef'],
       qualificationLabel: 'energy_invoice'
     })
+    await this.runInWorker('waitForSessionStorage', 'identity')
+    await this.runInWorker('getUserIdentity')
+    if (this.store.userIdentity) {
+      await this.saveIdentity({ contact: this.store.userIdentity })
+    }
   }
   async checkSession() {
-    this.log('debug', 'Starting checkSession')
+    this.log('debug', '📍️ Starting checkSession')
     /*
      * Here we wait for 3 secondes as the website could be a bit long to make the form interactive.
      * It may be present but not visible yet despite CSS is not actually hidding it,
@@ -226,7 +212,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async autoLogin(credentials) {
-    this.log('info', 'AutoLogin starts')
+    this.log('info', '📍️ AutoLogin starts')
     await Promise.all([
       this.waitForElementInWorker('#email'),
       this.waitForElementInWorker('#motdepasse'),
@@ -243,7 +229,7 @@ class TemplateContentScript extends ContentScript {
   // ////////
 
   async checkAuthenticated() {
-    this.log('debug', 'Starting checkAuthenticated')
+    this.log('debug', '📍️ Starting checkAuthenticated')
     if (
       document.location.href.includes('espace-client/synthese.html') &&
       document.querySelector('#header-deconnexion')
@@ -255,59 +241,101 @@ class TemplateContentScript extends ContentScript {
   }
 
   async getUserIdentity() {
-    const email = document.querySelector('#idEmailContact_Infos').innerHTML
-    const rawFullName = document.querySelector(
-      '#ProfilConsulterAdresseFacturation_nomComplet'
-    ).innerHTML
-    const { [1]: firstName, [2]: lastName } = rawFullName.split(' ')
-    const street = document.querySelector(
-      '#ProfilConsulterAdresseFacturation_adresse'
-    ).innerHTML
-    const addressComplement = document.querySelector(
-      '#ProfilConsulterAdresseFacturation_complementAdresse'
-    ).innerHTML
-    const [postCode, city] = document
-      .querySelector('#ProfilConsulterAdresseFacturation_commune')
-      .innerHTML.split(' ')
-    const phoneNumber = document
-      .querySelector('#idNumerosTelephone_Infos')
-      .innerHTML.replace(/\./g, '')
+    this.log('info', '📍️ getUserIdentity starts')
+    const refBP = window.sessionStorage.getItem('CEL_REFBP')
+    const infosJSON = JSON.parse(
+      window.sessionStorage.getItem('CEL_MOM_PERSONNES')
+    )
+    const userInfos = infosJSON[`${refBP}`]
+    const email = [{ address: userInfos.email }]
+    const firstName = userInfos.prenom
+    const lastName = userInfos.nom
+    const mobilePhone = userInfos.portable
+    const homePhone = userInfos.fixe
     let userIdentity = {
       email,
       name: {
         firstName,
         lastName,
         fullName: `${firstName} ${lastName}`
-      },
-      address: [
-        {
-          street,
-          postCode,
-          city
-        }
-      ],
-      phone: [
-        {
-          type: phoneNumber.match(/^06|07|\+336|\+337/g) ? 'mobile' : 'home',
-          number: phoneNumber
-        }
-      ]
+      }
     }
-    if (addressComplement !== 'Etage : .') {
-      userIdentity.address[0].addressComplement = addressComplement
-      userIdentity.address[0].fullAddress = `${street} ${addressComplement} ${postCode} ${city}`
+    const phone = await this.getPhones({ mobilePhone, homePhone })
+    if (phone !== null) {
+      userIdentity.phone = phone
     }
-    if ((addressComplement === 'Etage : .') | null | undefined) {
-      userIdentity.address[0].fullAddress = `${street} ${postCode} ${city}`
-    }
+    const address = await this.getAddress(userInfos.adresse)
+    userIdentity.address = [...address]
     await this.sendToPilot({ userIdentity })
   }
 
+  getPhones(phonesInfos) {
+    this.log('info', '📍️ getPhones starts')
+    let phone = []
+    if (phonesInfos.mobilePhone) {
+      phone.push({
+        type: 'mobile',
+        number: phonesInfos.mobilePhone
+      })
+    }
+    if (phonesInfos.homePhone) {
+      phone.push({
+        type: 'home',
+        number: phonesInfos.homePhone
+      })
+    }
+    if (!phonesInfos.mobilePhone && !phonesInfos.homePhone) {
+      this.log(
+        'info',
+        'No phone numbers found, removing phone array from identity object'
+      )
+      return null
+    }
+    return phone
+  }
+
+  getAddress(addresseInfos) {
+    this.log('info', '📍️ getAddress starts')
+    let address = []
+    const street = addresseInfos.libelleVoie
+    const streetNumber = addresseInfos.numeroVoie
+    let addressComplement = addresseInfos.etage
+    const locality = addresseInfos.lieuDit
+    const postCode = addresseInfos.cp
+    const city = addresseInfos.ville
+    let fullAddress
+
+    if (addressComplement === '.') {
+      addressComplement = ''
+    }
+
+    if (!addressComplement && !locality) {
+      fullAddress = `${streetNumber} ${street} ${postCode} ${city}`
+    }
+    if (addressComplement && locality) {
+      fullAddress = `${streetNumber} ${street} ${addressComplement} ${locality} ${postCode} ${city}`
+    }
+    if (addressComplement) {
+      fullAddress = `${streetNumber} ${street} ${addressComplement} ${postCode} ${city}`
+    }
+    if (locality) {
+      fullAddress = `${streetNumber} ${street} ${locality} ${postCode} ${city}`
+    }
+
+    address.push({
+      street,
+      postCode,
+      city,
+      fullAddress
+    })
+    return address
+  }
+
   async getBills() {
-    this.log('debug', 'Starting getBills')
+    this.log('debug', '📍️ Starting getBills')
     let bills = []
     let foundBills = []
-    await this.waitForSessionStorage()
+    await this.waitForSessionStorage('factures')
     const refBP = window.sessionStorage.getItem('CEL_REFBP')
     const billsJSON = JSON.parse(
       window.sessionStorage.getItem('CEL_MOM_FACTURES')
@@ -327,7 +355,7 @@ class TemplateContentScript extends ContentScript {
       const currency = '€'
       const documentType = bill.libelle
       const billDate = new Date(bill.dateFacture)
-      const formattedDate = format(billDate, 'dd_MM_yyyy')
+      const formattedDate = format(billDate, 'yyyy_MM_dd')
       const vendorRef = bill.id
       const decodeFileHref = `${decodeURIComponent(bill.url)}`
       const doubleEncodedFileHref = encodeURIComponent(
@@ -365,7 +393,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async checkWelcomeMessage() {
-    this.log('info', 'checkWelcomeMessage starts')
+    this.log('info', '📍️ checkWelcomeMessage starts')
     await waitFor(
       () => {
         if (
@@ -386,6 +414,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async checkIfFullfilled() {
+    this.log('info', '📍️ checkIfFullfilled starts')
     await waitFor(
       () => {
         function sortTruthy(value) {
@@ -421,7 +450,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async checkActiveSession() {
-    this.log('debug', 'Starting checkActiveSession')
+    this.log('debug', '📍️ Starting checkActiveSession')
     const formIsInvisible = document
       .querySelector('#view-mode-non-connecte')
       .getAttribute('class')
@@ -434,7 +463,7 @@ class TemplateContentScript extends ContentScript {
   }
 
   async handleForm(credentials) {
-    this.log('debug', 'Starting handleForm')
+    this.log('debug', '📍️ Starting handleForm')
     const loginElement = document.querySelector('input[id="email"]')
     const passwordElement = document.querySelector('input[id="motdepasse"]')
     const submitButton = document.querySelector('button[id="login-btn"]')
@@ -459,19 +488,48 @@ class TemplateContentScript extends ContentScript {
     else return false
   }
 
-  async waitForSessionStorage() {
-    await waitFor(
-      () => {
-        const result = Boolean(
-          window.sessionStorage.getItem('CEL_MOM_FACTURES')
-        )
-        return result
-      },
-      {
-        interval: 1000,
-        timeout: 30 * 1000
-      }
-    )
+  async waitForSessionStorage(option) {
+    this.log('info', `📍️ waitForSessionStorage for ${option} starts`)
+    if (option === 'factures') {
+      await waitFor(
+        () => {
+          const result = Boolean(
+            window.sessionStorage.getItem('CEL_MOM_FACTURES')
+          )
+          return result
+        },
+        {
+          interval: 1000,
+          timeout: 30 * 1000
+        }
+      )
+    }
+    if (option === 'email') {
+      await waitFor(
+        () => {
+          const result = Boolean(window.sessionStorage.getItem('email'))
+          return result
+        },
+        {
+          interval: 1000,
+          timeout: 30 * 1000
+        }
+      )
+    }
+    if (option === 'identity') {
+      await waitFor(
+        () => {
+          const result = Boolean(
+            window.sessionStorage.getItem('CEL_MOM_PERSONNES')
+          )
+          return result
+        },
+        {
+          interval: 1000,
+          timeout: 30 * 1000
+        }
+      )
+    }
   }
 }
 
