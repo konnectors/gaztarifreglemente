@@ -12,6 +12,52 @@ class TemplateContentScript extends ContentScript {
   // ////////
   // PILOT //
   // ////////
+
+  async onWorkerEvent({ event, payload }) {
+    if (event === 'loginSubmit') {
+      const { login, password } = payload || {}
+      if (login && password) {
+        this.store.userCredentials = { login, password }
+      } else {
+        this.log('warn', 'Did not manage to intercept credentials')
+      }
+    }
+  }
+
+  async onWorkerReady() {
+    function addClickListener() {
+      document.body.addEventListener('click', e => {
+        const clickedElementId = e.target.getAttribute('id')
+        if (clickedElementId === 'login-btn') {
+          const login = document.querySelector(`#email`)?.value
+          const password = document.querySelector('#motdepasse')?.value
+          this.bridge.emit('workerEvent', {
+            event: 'loginSubmit',
+            payload: { login, password }
+          })
+        }
+      })
+    }
+    await this.waitForElementNoReload('#email')
+    await this.waitForElementNoReload('#motdepasse')
+    if (
+      !(await this.checkForElement('#checkboxMat')) &&
+      (await this.checkForElement('#motdepasse'))
+    ) {
+      this.log(
+        'warn',
+        'Cannot find the rememberMe checkbox, logout might not work as expected'
+      )
+    } else {
+      const checkBox = document.querySelector('#checkboxMat')
+      // Setting the visibility to hidden on the parent to make the element disapear
+      // preventing users to click it
+      checkBox.parentNode.parentNode.style.visibility = 'hidden'
+    }
+    this.log('info', 'password element found, adding listener')
+    addClickListener.bind(this)()
+  }
+
   async navigateToLoginForm() {
     this.log('info', 'navigateToLoginForm starts')
     await this.goto(LOGIN_URL)
@@ -47,6 +93,7 @@ class TemplateContentScript extends ContentScript {
 
   async ensureAuthenticated({ account }) {
     this.log('info', 'ensureAuthenticated starts')
+    this.bridge.addEventListener('workerEvent', this.onWorkerEvent.bind(this))
     if (!account) {
       await this.ensureNotAuthenticated()
     }
@@ -197,18 +244,6 @@ class TemplateContentScript extends ContentScript {
 
   async checkAuthenticated() {
     this.log('debug', 'Starting checkAuthenticated')
-    const loginField = document.querySelector('#email')
-    const passwordField = document.querySelector('#motdepasse')
-    if (loginField && passwordField) {
-      const userCredentials = await this.findAndSendCredentials.bind(this)(
-        loginField,
-        passwordField
-      )
-      this.log('debug', 'Sendin userCredentials to Pilot')
-      this.sendToPilot({
-        userCredentials
-      })
-    }
     if (
       document.location.href.includes('espace-client/synthese.html') &&
       document.querySelector('#header-deconnexion')
@@ -217,17 +252,6 @@ class TemplateContentScript extends ContentScript {
       return true
     }
     return false
-  }
-
-  async findAndSendCredentials(login, password) {
-    this.log('debug', 'Starting findAndSendCredentials')
-    let userLogin = login.value
-    let userPassword = password.value
-    const userCredentials = {
-      login: userLogin,
-      password: userPassword
-    }
-    return userCredentials
   }
 
   async getUserIdentity() {
