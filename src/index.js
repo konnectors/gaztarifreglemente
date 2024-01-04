@@ -194,7 +194,7 @@ class TemplateContentScript extends ContentScript {
       'a[href="/espace-client/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
-    const bills = await this.runInWorker('getUserDatas')
+    const bills = await this.runInWorker('getBills')
     await this.saveBills(bills, {
       context,
       keys: ['vendorRef'],
@@ -303,8 +303,8 @@ class TemplateContentScript extends ContentScript {
     await this.sendToPilot({ userIdentity })
   }
 
-  async getUserDatas() {
-    this.log('debug', 'Starting getUserDatas')
+  async getBills() {
+    this.log('debug', 'Starting getBills')
     let bills = []
     let foundBills = []
     await this.waitForSessionStorage()
@@ -482,7 +482,7 @@ connector
   .init({
     additionalExposedMethodsNames: [
       'getUserIdentity',
-      'getUserDatas',
+      'getBills',
       'checkIfFullfilled',
       'checkWelcomeMessage',
       'checkActiveSession',
