@@ -119,13 +119,17 @@ class TemplateContentScript extends ContentScript {
         return true
       }
     }
-    const isSuccess = await this.autoLogin(credentials)
-    if (isSuccess) {
-      return true
-    } else {
-      this.log('debug', 'Something went wrong while autoLogin, new auth needed')
-      this.waitForUserAuthentication()
-    }
+    await this.autoFillCredentials(credentials)
+    // const isSuccess = await this.autoLogin(credentials)
+    // if (isSuccess) {
+    //   return true
+    // } else {
+    //   this.log(
+    //     'debug',
+    //     'Something went wrong while autoFillCredentials, new auth needed'
+    //   )
+    //   this.waitForUserAuthentication()
+    // }
   }
 
   async authWithoutCredentials() {
@@ -211,17 +215,25 @@ class TemplateContentScript extends ContentScript {
     }
   }
 
-  async autoLogin(credentials) {
-    this.log('info', '📍️ AutoLogin starts')
+  async autoFillCredentials(credentials) {
+    this.log('info', '📍️ autoFillCredentials starts')
     await Promise.all([
       this.waitForElementInWorker('#email'),
       this.waitForElementInWorker('#motdepasse'),
       this.waitForElementInWorker('#login-btn')
     ])
     await this.runInWorker('handleForm', credentials)
-    const isLoginFailed = await this.runInWorker('checkLoginFail')
-    if (isLoginFailed) return false
-    else return true
+    // Changes on the website added a "isTrusted" on the loginButton click,
+    // leading to the impossibility to do a proper autoLogin.
+    // So until another solution has been found, we're just doing an autoFill and present de page to the user so he can click de loginButton.
+    // Keeping this code for later.
+
+    // const isLoginFailed = await this.runInWorker('checkLoginFail')
+    // if (isLoginFailed) return false
+    // else return true
+
+    await this.waitForUserAuthentication()
+    return true
   }
 
   // ////////
@@ -466,13 +478,16 @@ class TemplateContentScript extends ContentScript {
     this.log('debug', '📍️ Starting handleForm')
     const loginElement = document.querySelector('input[id="email"]')
     const passwordElement = document.querySelector('input[id="motdepasse"]')
-    const submitButton = document.querySelector('button[id="login-btn"]')
+
+    // const submitButton = document.querySelector('button[id="login-btn"]')
+    // const formElement = document.querySelector('#login-form')
 
     loginElement.value = credentials.login
     passwordElement.value = credentials.password
     if (loginElement.value.length > 0 && passwordElement.value.length > 0) {
       this.log('info', 'Login and password fullfilled')
-      submitButton.click()
+      // submitButton.click()
+      // formElement.submit()
       return true
     } else {
       this.log('warn', 'something went wrong while filling values')
