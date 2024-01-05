@@ -7,6 +7,7 @@ Minilog.enable('gazpasserelleCCC')
 
 const BASE_URL = 'https://gazpasserelle.engie.fr/'
 const LOGIN_URL = `${BASE_URL}login-page.html`
+let FORCE_FETCH_ALL = false
 class TemplateContentScript extends ContentScript {
   // ////////
   // PILOT //
@@ -171,6 +172,7 @@ class TemplateContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('debug', '🤖 Starting fetch')
+    const distanceInDays = await this.handleContextInfos(context)
     if (this.store.userCredentials) {
       await this.saveCredentials(this.store.userCredentials)
     }
@@ -179,7 +181,7 @@ class TemplateContentScript extends ContentScript {
       'a[href="/espace-client/factures-et-paiements.html"]'
     )
     await this.waitForElementInWorker('#factures-listeFacture')
-    const bills = await this.runInWorker('getBills')
+    const bills = await this.runInWorker('getBills', distanceInDays)
     await this.saveBills(bills, {
       context,
       keys: ['vendorRef'],
@@ -193,6 +195,30 @@ class TemplateContentScript extends ContentScript {
       await this.saveIdentity({ contact: this.store.userIdentity })
     }
   }
+
+  async handleContextInfos(context) {
+    this.log('info', '📍️ handleContextInfos starts')
+    const { trigger } = context
+    // force fetch all data (the long way) when last trigger execution is older than 90 days
+    // or when the last job was an error
+    const isLastJobError =
+      trigger.current_state?.last_failure > trigger.current_state?.last_success
+    const hasLastExecution = Boolean(trigger.current_state?.last_execution)
+    const distanceInDays = getDateDistanceInDays(
+      trigger.current_state?.last_execution
+    )
+    this.log('debug', `distanceInDays: ${distanceInDays}`)
+    if (distanceInDays >= 90 || !hasLastExecution || isLastJobError) {
+      this.log('info', '🐢️ Long execution')
+      this.log('debug', `isLastJobError: ${isLastJobError}`)
+      this.log('debug', `hasLastExecution: ${hasLastExecution}`)
+      FORCE_FETCH_ALL = true
+    } else {
+      this.log('info', '🐇️ Quick execution')
+    }
+    return distanceInDays
+  }
+
   async checkSession() {
     this.log('debug', '📍️ Starting checkSession')
     /*
@@ -343,7 +369,7 @@ class TemplateContentScript extends ContentScript {
     return address
   }
 
-  async getBills() {
+  async getBills(distanceInDays) {
     this.log('debug', '📍️ Starting getBills')
     let bills = []
     let foundBills = []
@@ -362,7 +388,30 @@ class TemplateContentScript extends ContentScript {
       const values = Object.values(fullObject)
       values.forEach(value => foundBills.push(value))
     }
-    for (let bill of foundBills) {
+    let billsToFetch
+    if (!FORCE_FETCH_ALL) {
+      const storageBills = foundBills
+      // FORCE_FETCH_ALL being define priorly, if we're meeting this condition,
+      // we just need to look for 3 month back maximum.
+      // In order to get the fastest execution possible, we're checking how many months we got to cover since last execution
+      // as the website is providing one bill every ~two month apparently, while special cases will be covered from one month to another.
+      let numberToFetch = Math.ceil(distanceInDays / 30)
+
+      this.log(
+        'info',
+        `Fetching ${numberToFetch} ${numberToFetch > 1 ? 'bills' : 'bill'}`
+      )
+      // If numberToFetch is 0, we force at least the last bill
+      billsToFetch = storageBills.slice(
+        0,
+        numberToFetch === 0 ? 1 : numberToFetch
+      )
+      this.log('info', `billsToFetch.length : ${billsToFetch.length}`)
+    } else {
+      this.log('info', 'Fetching all bills')
+      billsToFetch = foundBills
+    }
+    for (let bill of billsToFetch) {
       const amount = bill.montant
       const currency = '€'
       const documentType = bill.libelle
@@ -567,3 +616,10 @@ connector
   .catch(err => {
     log.warn(err)
   })
+
+function getDateDistanceInDays(dateString) {
+  const distanceMs = Date.now() - new Date(dateString).getTime()
+  const days = 1000 * 60 * 60 * 24
+
+  return Math.floor(distanceMs / days)
+}
