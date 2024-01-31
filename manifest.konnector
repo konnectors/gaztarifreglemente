@@ -1,5 +1,5 @@
 {
-  "version": "2.9.0",
+  "version": "2.8.0",
   "name": "Gaz Passerelle Engie",
   "type": "konnector",
   "language": "node",
@@ -10,7 +10,7 @@
   "editor": "Cozy",
   "vendor_link": "https://gazpasserelle.engie.fr/",
   "categories": [
-    "energy_invoice"
+    "energy"
   ],
   "folders": [
     {
