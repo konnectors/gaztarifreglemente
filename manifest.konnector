@@ -1,6 +1,6 @@
 {
   "version": "2.9.0",
-  "name": "Gaz Passerelle Engie",
+  "name": "Engie - Gaz passerelle",
   "type": "konnector",
   "language": "node",
   "clientSide": true,
